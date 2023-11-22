@@ -44,31 +44,6 @@ public class ReadingsController : ControllerBase
                 statusCode: StatusCodes.Status401Unauthorized);
         }
 
-        var possibleFirmwareError = ValidateFirmwareVersionFormat(deviceReadingRequest);
-
-        if (possibleFirmwareError != null)
-            return BadRequest(possibleFirmwareError);
-
         return Ok(_alertService.GetAlerts(deviceReadingRequest));
-    }
-
-    private ValidationProblemDetails ValidateFirmwareVersionFormat(DeviceReadingRequest deviceReadingRequest)
-    {
-        if (_alertService.ValidateFirmwareFormat(deviceReadingRequest))
-            return null;
-
-        var validationProblems = new Dictionary<string, string[]>
-            {
-                { "FirmwareVersion", new string[] { "The firmware value does not match semantic versioning format." } },
-            };
-
-        var problemDetails = new ValidationProblemDetails(validationProblems)
-        {
-            Status = StatusCodes.Status400BadRequest,
-            Title = "Validation errors occurred",
-            Instance = HttpContext.Request.Path
-        };
-
-        return problemDetails;
-    }
+    }   
 }
