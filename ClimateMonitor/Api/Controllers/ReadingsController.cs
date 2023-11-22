@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
 using ClimateMonitor.Services;
 using ClimateMonitor.Services.Models;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ClimateMonitor.Api.Controllers;
 
@@ -12,7 +12,7 @@ public class ReadingsController : ControllerBase
     private readonly AlertService _alertService;
 
     public ReadingsController(
-        DeviceSecretValidatorService secretValidator, 
+        DeviceSecretValidatorService secretValidator,
         AlertService alertService)
     {
         _secretValidator = secretValidator;
@@ -34,9 +34,10 @@ public class ReadingsController : ControllerBase
     /// <param name="deviceReadingRequest">Sensor information and extra metadata from device.</param>
     [HttpPost("evaluate")]
     public ActionResult<IEnumerable<Alert>> EvaluateReading(
-        string deviceSecret,
         [FromBody] DeviceReadingRequest deviceReadingRequest)
     {
+        HttpContext.Request.Headers.TryGetValue("x-device-shared-secret", out var deviceSecret);
+
         if (!_secretValidator.ValidateDeviceSecret(deviceSecret))
         {
             return Problem(
@@ -44,6 +45,31 @@ public class ReadingsController : ControllerBase
                 statusCode: StatusCodes.Status401Unauthorized);
         }
 
+        var possibleFirmwareError = ValidateFirmwareVersionFormat(deviceReadingRequest);
+
+        if (possibleFirmwareError != null)
+            return BadRequest(possibleFirmwareError);
+
         return Ok(_alertService.GetAlerts(deviceReadingRequest));
+    }
+
+    private ValidationProblemDetails ValidateFirmwareVersionFormat(DeviceReadingRequest deviceReadingRequest)
+    {
+        if (_alertService.ValidateFirmwareFormat(deviceReadingRequest))
+            return null;
+
+        var validationProblems = new Dictionary<string, string[]>
+            {
+                { "FirmwareVersion", new string[] { "The firmware value does not match semantic versioning format." } },
+            };
+
+        var problemDetails = new ValidationProblemDetails(validationProblems)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Validation errors occurred",
+            Instance = HttpContext.Request.Path
+        };
+
+        return problemDetails;
     }
 }
